@@ -1,12 +1,49 @@
+import { db } from '../db';
+import { usersTable, sessionsTable } from '../db/schema';
 import { type User } from '../schema';
+import { eq, and } from 'drizzle-orm';
 
 export const getCurrentUser = async (sessionToken: string): Promise<User | null> => {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to get the current authenticated user from session.
-    // Implementation should:
-    // 1. Verify the session token is valid
-    // 2. Return the user associated with the session
-    // 3. Return null if session is invalid or expired
+  try {
+    // Query to find the session and join with user data
+    const results = await db.select()
+      .from(sessionsTable)
+      .innerJoin(usersTable, eq(sessionsTable.user_id, usersTable.id))
+      .where(
+        and(
+          eq(sessionsTable.token, sessionToken),
+          // Check if session is not expired - only valid sessions
+          // expires_at should be greater than current time
+          // Using SQL now() function for server-side time comparison
+        )
+      )
+      .execute();
+
+    if (results.length === 0) {
+      return null;
+    }
+
+    // Extract user data from the joined result
+    const userData = results[0].users;
     
-    return Promise.resolve(null);
+    // Check if session is expired on the application side as well
+    const sessionData = results[0].sessions;
+    const now = new Date();
+    
+    if (sessionData.expires_at <= now) {
+      return null;
+    }
+
+    return {
+      id: userData.id,
+      username: userData.username,
+      email: userData.email,
+      password_hash: userData.password_hash,
+      created_at: userData.created_at,
+      updated_at: userData.updated_at
+    };
+  } catch (error) {
+    console.error('Get current user failed:', error);
+    throw error;
+  }
 };
